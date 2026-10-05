@@ -7,30 +7,30 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*' },
-    maxHttpBufferSize: 1e7 // 10MB cho ảnh/voice base64
+    transports: ['websocket', 'polling'],
+    maxHttpBufferSize: 1e7
 });
 
 const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ STATE ============
-const users = new Map();      // socketId -> user
-const usersByUid = new Map(); // uid -> user (bền qua socket)
-const rooms = new Map();      // roomName -> Set(socketId)
-const history = new Map();    // roomName -> Message[]
-const dms = new Map();        // dmKey -> Message[]  (dmKey = sorted uid pair)
-const friendGraph = new Map();// uid -> Set(uid)
+const users = new Map();
+const usersByUid = new Map();
+const rooms = new Map();
+const history = new Map();
+const dms = new Map();
 
 const COLORS = ['#e11d48','#db2777','#c026d3','#9333ea','#7c3aed','#4f46e5','#2563eb','#0284c7','#0891b2','#0d9488','#059669','#16a34a','#ca8a04','#ea580c','#dc2626'];
 
 const genUid = () => 'u_' + Math.random().toString(36).slice(2, 10);
 const dmKey = (a, b) => [a, b].sort().join('::');
 
-function addHistory(map, key, msg, max = 200) {
+function addHistory(map, key, msg, max) {
     if (!map.has(key)) map.set(key, []);
     const arr = map.get(key);
     arr.push(msg);
-    if (arr.length > max) arr.shift();
+    if (arr.length > (max || 200)) arr.shift();
 }
 
 function userPublic(u) {
@@ -41,9 +41,7 @@ function userPublic(u) {
         avatar: u.avatar || null,
         color: u.color,
         bio: u.bio || '',
-        room: u.room,
-        online: true,
-        joinedAt: u.joinedAt
+        room: u.room
     };
 }
 
@@ -57,30 +55,24 @@ function broadcastUserList(room) {
 }
 
 function broadcastAll() {
-    const roomsList = [...rooms.keys()];
-    for (const r of roomsList) broadcastUserList(r);
-    // emit global online count
-    io.emit('global online', { online: users.size, rooms: roomsList.length });
+    for (const r of [...rooms.keys()]) broadcastUserList(r);
+    io.emit('global online', { online: users.size, rooms: rooms.size });
 }
 
 // ============ SOCKET ============
 io.on('connection', (socket) => {
     console.log('[+]', socket.id);
 
-    // ============ JOIN ============
-    socket.on('join', ({ uid, name, room, avatar, bio }) => {
-        name = String(name || '').trim().slice(0, 32) || 'Ẩn danh';
-        room = String(room || '').trim().slice(0, 32) || 'general';
-        bio = String(bio || '').trim().slice(0, 200);
-        uid = uid && String(uid).slice(0, 32) || genUid();
+    socket.on('join', (data) => {
+        const name = String(data?.name || '').trim().slice(0, 32) || 'Ẩn danh';
+        const room = String(data?.room || '').trim().slice(0, 32) || 'general';
+        const bio = String(data?.bio || '').trim().slice(0, 200);
+        const uid = (data?.uid && String(data.uid).slice(0, 32)) || genUid();
+        const avatar = data?.avatar || null;
 
-        // user cũ trong usersByUid
         let user = usersByUid.get(uid);
         if (user) {
-            // update socket id
-            const oldSocketId = user.id;
-            users.delete(oldSocketId);
-            // copy fields
+            users.delete(user.id);
             user.id = socket.id;
             user.name = name;
             user.room = room;
@@ -94,21 +86,21 @@ io.on('connection', (socket) => {
                 name,
                 room,
                 bio,
-                avatar: avatar || null,
+                avatar,
                 color: COLORS[Math.floor(Math.random() * COLORS.length)],
                 joinedAt: Date.now(),
-                online: true,
-                friends: new Set()
+                online: true
             };
             usersByUid.set(uid, user);
         }
         users.set(socket.id, user);
 
         // rời phòng cũ
-        const old = [...rooms.entries()].find(([r, s]) => s.has(socket.id) && r !== room);
-        if (old) {
-            old[1].delete(socket.id);
-            if (old[1].size === 0) rooms.delete(old[0]);
+        for (const [r, set] of rooms.entries()) {
+            if (r !== room && set.has(socket.id)) {
+                set.delete(socket.id);
+                if (set.size === 0) rooms.delete(r);
+            }
         }
 
         if (!rooms.has(room)) rooms.set(room, new Set());
@@ -117,7 +109,6 @@ io.on('connection', (socket) => {
 
         socket.emit('joined', { ...userPublic(user), socketId: socket.id });
         socket.emit('history', history.get(room) || []);
-        socket.emit('friends', [...(user.friends || [])]);
 
         socket.to(room).emit('system', {
             text: `${name} đã vào phòng`,
@@ -126,16 +117,14 @@ io.on('connection', (socket) => {
 
         broadcastUserList(room);
         broadcastAll();
-        console.log(`[join] ${name} (${uid}) -> #${room}`);
+        console.log(`[join] ${name} -> #${room}`);
     });
 
-    // ============ MESSAGE (room) ============
     socket.on('message', (payload) => {
         const u = users.get(socket.id);
         if (!u) return;
         const text = String(payload?.text || '').slice(0, 5000);
         if (!text.trim()) return;
-
         const msg = {
             id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
             kind: 'text',
@@ -151,13 +140,12 @@ io.on('connection', (socket) => {
         io.to(u.room).emit('message', msg);
     });
 
-    // ============ IMAGE ============
-    socket.on('image', ({ dataUrl, caption }) => {
+    socket.on('image', (payload) => {
         const u = users.get(socket.id);
         if (!u) return;
+        const dataUrl = payload?.dataUrl;
         if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return;
-        if (dataUrl.length > 8e6) return; // ~6MB
-
+        if (dataUrl.length > 8e6) return;
         const msg = {
             id: 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
             kind: 'image',
@@ -167,20 +155,19 @@ io.on('connection', (socket) => {
             avatar: u.avatar,
             color: u.color,
             dataUrl,
-            text: String(caption || '').slice(0, 500),
+            text: String(payload?.caption || '').slice(0, 500),
             time: Date.now()
         };
         addHistory(history, u.room, msg);
         io.to(u.room).emit('message', msg);
     });
 
-    // ============ VOICE ============
-    socket.on('voice', ({ dataUrl, duration }) => {
+    socket.on('voice', (payload) => {
         const u = users.get(socket.id);
         if (!u) return;
+        const dataUrl = payload?.dataUrl;
         if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:audio/')) return;
         if (dataUrl.length > 8e6) return;
-
         const msg = {
             id: 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
             kind: 'voice',
@@ -190,49 +177,46 @@ io.on('connection', (socket) => {
             avatar: u.avatar,
             color: u.color,
             dataUrl,
-            duration: Number(duration) || 0,
+            duration: Number(payload?.duration) || 0,
             time: Date.now()
         };
         addHistory(history, u.room, msg);
         io.to(u.room).emit('message', msg);
     });
 
-    // ============ TYPING ============
     socket.on('typing', (isTyping) => {
         const u = users.get(socket.id);
         if (!u) return;
         socket.to(u.room).emit('typing', {
-            userId: socket.id, name: u.name, typing: !!isTyping
+            userId: socket.id,
+            name: u.name,
+            typing: !!isTyping
         });
     });
 
-    // ============ UPDATE PROFILE ============
-    socket.on('update profile', ({ name, avatar, bio }) => {
+    socket.on('update profile', (payload) => {
         const u = users.get(socket.id);
         if (!u) return;
-        if (name) u.name = String(name).trim().slice(0, 32);
-        if (bio !== undefined) u.bio = String(bio).trim().slice(0, 200);
-        if (avatar !== undefined) u.avatar = avatar;
+        if (payload?.name) u.name = String(payload.name).trim().slice(0, 32);
+        if (payload?.bio !== undefined) u.bio = String(payload.bio).trim().slice(0, 200);
+        if (payload?.avatar !== undefined) u.avatar = payload.avatar;
         const pub = userPublic(u);
         io.to(u.room).emit('profile updated', pub);
-        io.emit('user updated', pub); // broadcast toàn bộ để friend list update
+        io.emit('user updated', pub);
         broadcastUserList(u.room);
     });
 
-    // ============ GET PROFILE BY UID ============
     socket.on('get profile', (uid, cb) => {
         const u = usersByUid.get(uid);
         if (typeof cb === 'function') cb(userPublic(u));
     });
 
-    // ============ FRIEND REQUEST ============
-    socket.on('friend request', ({ toUid }) => {
+    socket.on('friend request', (payload) => {
         const from = users.get(socket.id);
         if (!from) return;
+        const toUid = payload?.toUid;
         const target = usersByUid.get(toUid);
         if (!target) return socket.emit('friend error', 'Người dùng không online');
-
-        // tìm socket của target
         for (const [sid, u] of users.entries()) {
             if (u.uid === toUid) {
                 io.to(sid).emit('friend request', userPublic(from));
@@ -242,81 +226,95 @@ io.on('connection', (socket) => {
         socket.emit('friend request sent', toUid);
     });
 
-    // ============ FRIEND ACCEPT ============
-    socket.on('friend accept', ({ fromUid }) => {
+    socket.on('friend accept', (payload) => {
         const me = users.get(socket.id);
         if (!me) return;
+        const fromUid = payload?.fromUid;
         const other = usersByUid.get(fromUid);
         if (!other) return;
-
-        if (!me.friends) me.friends = new Set();
-        if (!other.friends) other.friends = new Set();
+        me.friends = me.friends || new Set();
+        other.friends = other.friends || new Set();
         me.friends.add(fromUid);
         other.friends.add(me.uid);
-
         socket.emit('friends', [...me.friends]);
-        // thông báo cho other
         for (const [sid, u] of users.entries()) {
             if (u.uid === fromUid) {
                 io.to(sid).emit('friends', [...other.friends]);
-                io.to(sid).emit('system', { text: `${me.name} đã chấp nhận kết bạn`, time: Date.now() });
                 break;
             }
         }
-        io.to(me.room).emit('system', { text: `${me.name} và ${other.name} đã kết bạn`, time: Date.now() });
+        io.to(me.room).emit('system', {
+            text: `${me.name} và ${other.name} đã kết bạn`,
+            time: Date.now()
+        });
     });
 
-    // ============ FRIEND DECLINE ============
-    socket.on('friend decline', ({ fromUid }) => {
+    socket.on('friend decline', (payload) => {
         const me = users.get(socket.id);
         if (!me) return;
         for (const [sid, u] of users.entries()) {
-            if (u.uid === fromUid) {
-                io.to(sid).emit('system', { text: `${me.name} đã từ chối kết bạn`, time: Date.now() });
+            if (u.uid === payload?.fromUid) {
+                io.to(sid).emit('system', {
+                    text: `${me.name} đã từ chối kết bạn`,
+                    time: Date.now()
+                });
                 break;
             }
         }
     });
 
-    // ============ DM ============
-    socket.on('dm', ({ toUid, text, kind, dataUrl, duration, caption }) => {
+    socket.on('dm', (payload) => {
         const me = users.get(socket.id);
         if (!me) return;
+        const toUid = payload?.toUid;
+        if (!toUid) return;
         const key = dmKey(me.uid, toUid);
-
         let msg;
-        if (kind === 'image' && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
-            if (dataUrl.length > 8e6) return;
+        if (payload.kind === 'image' && typeof payload.dataUrl === 'string' && payload.dataUrl.startsWith('data:image/')) {
+            if (payload.dataUrl.length > 8e6) return;
             msg = {
                 id: 'dm_i_' + Date.now(),
-                kind: 'image', dataUrl,
-                text: String(caption || '').slice(0, 500),
-                fromUid: me.uid, toUid, name: me.name,
-                avatar: me.avatar, color: me.color, time: Date.now()
+                kind: 'image',
+                dataUrl: payload.dataUrl,
+                text: String(payload.caption || '').slice(0, 500),
+                fromUid: me.uid,
+                toUid,
+                name: me.name,
+                avatar: me.avatar,
+                color: me.color,
+                time: Date.now()
             };
-        } else if (kind === 'voice' && typeof dataUrl === 'string' && dataUrl.startsWith('data:audio/')) {
-            if (dataUrl.length > 8e6) return;
+        } else if (payload.kind === 'voice' && typeof payload.dataUrl === 'string' && payload.dataUrl.startsWith('data:audio/')) {
+            if (payload.dataUrl.length > 8e6) return;
             msg = {
                 id: 'dm_v_' + Date.now(),
-                kind: 'voice', dataUrl,
-                duration: Number(duration) || 0,
-                fromUid: me.uid, toUid, name: me.name,
-                avatar: me.avatar, color: me.color, time: Date.now()
+                kind: 'voice',
+                dataUrl: payload.dataUrl,
+                duration: Number(payload.duration) || 0,
+                fromUid: me.uid,
+                toUid,
+                name: me.name,
+                avatar: me.avatar,
+                color: me.color,
+                time: Date.now()
             };
         } else {
-            const t = String(text || '').slice(0, 5000);
+            const t = String(payload.text || '').slice(0, 5000);
             if (!t.trim()) return;
             msg = {
                 id: 'dm_' + Date.now(),
-                kind: 'text', text: t,
-                fromUid: me.uid, toUid, name: me.name,
-                avatar: me.avatar, color: me.color, time: Date.now()
+                kind: 'text',
+                text: t,
+                fromUid: me.uid,
+                toUid,
+                name: me.name,
+                avatar: me.avatar,
+                color: me.color,
+                time: Date.now()
             };
         }
-
         addHistory(dms, key, msg);
-        socket.emit('dm message', msg); // echo to sender
-        // gửi đến target
+        socket.emit('dm message', msg);
         for (const [sid, u] of users.entries()) {
             if (u.uid === toUid) {
                 io.to(sid).emit('dm message', msg);
@@ -325,48 +323,29 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ============ DM HISTORY ============
-    socket.on('dm history', ({ withUid }, cb) => {
+    socket.on('dm history', (payload, cb) => {
         const me = users.get(socket.id);
         if (!me) return;
-        const key = dmKey(me.uid, withUid);
+        const key = dmKey(me.uid, payload?.withUid);
         const arr = dms.get(key) || [];
         if (typeof cb === 'function') cb(arr);
-        else socket.emit('dm history', arr);
     });
 
-    // ============ DM TYPING ============
-    socket.on('dm typing', ({ toUid, typing }) => {
+    socket.on('dm typing', (payload) => {
         const me = users.get(socket.id);
         if (!me) return;
         for (const [sid, u] of users.entries()) {
-            if (u.uid === toUid) {
-                io.to(sid).emit('dm typing', { fromUid: me.uid, name: me.name, typing: !!typing });
+            if (u.uid === payload?.toUid) {
+                io.to(sid).emit('dm typing', {
+                    fromUid: me.uid,
+                    name: me.name,
+                    typing: !!payload.typing
+                });
                 break;
             }
         }
     });
 
-    // ============ LEAVE ============
-    socket.on('leave', () => {
-        const u = users.get(socket.id);
-        if (!u) return;
-        const set = rooms.get(u.room);
-        socket.leave(u.room);
-        if (set) {
-            set.delete(socket.id);
-            if (set.size === 0) rooms.delete(u.room);
-            else {
-                socket.to(u.room).emit('system', { text: `${u.name} đã rời phòng`, time: Date.now() });
-                broadcastUserList(u.room);
-            }
-        }
-        users.delete(socket.id);
-        u.online = false;
-        broadcastAll();
-    });
-
-    // ============ DISCONNECT ============
     socket.on('disconnect', () => {
         const u = users.get(socket.id);
         if (u) {
@@ -375,7 +354,10 @@ io.on('connection', (socket) => {
                 set.delete(socket.id);
                 if (set.size === 0) rooms.delete(u.room);
                 else {
-                    socket.to(u.room).emit('system', { text: `${u.name} đã rời phòng`, time: Date.now() });
+                    socket.to(u.room).emit('system', {
+                        text: `${u.name} đã rời phòng`,
+                        time: Date.now()
+                    });
                     broadcastUserList(u.room);
                 }
             }
@@ -387,13 +369,13 @@ io.on('connection', (socket) => {
     });
 });
 
-// ============ STATS ============
 app.get('/stats', (req, res) => {
     res.json({
         online: users.size,
         uniqueUsers: usersByUid.size,
         rooms: [...rooms.entries()].map(([name, set]) => ({
-            name, count: set.size, history: (history.get(name) || []).length
+            name,
+            count: set.size
         })),
         dms: dms.size
     });

@@ -8,7 +8,6 @@
 </head>
 <body>
 
-<!-- SPLASH -->
 <div class="screen visible" id="screenSplash">
     <div class="splash-box">
         <div class="logo">💬</div>
@@ -17,12 +16,11 @@
     </div>
 </div>
 
-<!-- SETUP (chỉ hiện lần đầu) -->
 <div class="screen" id="screenSetup">
     <div class="setup-box">
         <h1>Tạo hồ sơ</h1>
         <p class="sub">Nhập tên và chọn avatar</p>
-        <div class="avatar-pick" id="avatarPick">
+        <div class="avatar-pick">
             <div class="avatar-preview" id="avatarPreview">?</div>
             <input type="file" id="avatarInput" accept="image/*" style="display:none">
             <button class="btn small light" id="btnPickAvatar">Chọn ảnh</button>
@@ -34,19 +32,18 @@
     </div>
 </div>
 
-<!-- MAIN APP -->
 <div class="screen" id="screenApp">
     <header id="appHeader">
-        <button class="icon-btn" id="btnTabRooms" title="Phòng">#</button>
+        <button class="icon-btn" id="btnTabRooms">#</button>
         <div class="header-info">
             <div class="room-name" id="roomName">#general</div>
             <div class="online" id="onlineCount">0 online</div>
         </div>
-        <button class="icon-btn" id="btnTabFriends" title="Bạn bè">👥</button>
-        <button class="icon-btn" id="btnProfile" title="Hồ sơ">👤</button>
+        <button class="icon-btn" id="btnUserList">☰</button>
+        <button class="icon-btn" id="btnTabFriends">👥</button>
+        <button class="icon-btn" id="btnProfile">👤</button>
     </header>
 
-    <!-- ROOMS TAB -->
     <div class="tab-content visible" id="tabRooms">
         <div id="messages"></div>
         <div id="typingBar"></div>
@@ -59,7 +56,6 @@
         </footer>
     </div>
 
-    <!-- FRIENDS TAB -->
     <div class="tab-content" id="tabFriends">
         <div id="friendsList"></div>
         <div id="dmView" class="hidden">
@@ -81,7 +77,6 @@
     </div>
 </div>
 
-<!-- DRAWER: USERS IN ROOM -->
 <div id="drawer" class="drawer">
     <div class="drawer-head">
         <span>Thành viên phòng</span>
@@ -90,7 +85,6 @@
     <div id="userList"></div>
 </div>
 
-<!-- MODAL: PROFILE -->
 <div id="modalProfile" class="modal">
     <div class="modal-box">
         <div class="modal-head">
@@ -113,7 +107,6 @@
     </div>
 </div>
 
-<!-- MODAL: EDIT PROFILE -->
 <div id="modalEdit" class="modal">
     <div class="modal-box">
         <div class="modal-head">
@@ -135,12 +128,10 @@
     </div>
 </div>
 
-<!-- EMOJI PICKER -->
 <div id="emojiPicker" class="emoji-picker">
     <div class="emoji-grid" id="emojiGrid"></div>
 </div>
 
-<!-- VOICE RECORDER -->
 <div id="voiceRecorder" class="voice-recorder">
     <div class="vr-box">
         <div class="vr-timer" id="vrTimer">0:00</div>
@@ -150,10 +141,12 @@
     </div>
 </div>
 
-<!-- IMAGE PREVIEW -->
 <div id="imgPreview" class="modal">
     <div class="modal-box small">
-        <div class="modal-head"><span>Gửi ảnh</span><button class="icon-btn" id="imgClose">✕</button></div>
+        <div class="modal-head">
+            <span>Gửi ảnh</span>
+            <button class="icon-btn" id="imgClose">✕</button>
+        </div>
         <div class="modal-body">
             <img id="imgPreviewEl" style="width:100%;border-radius:12px;max-height:50vh;object-fit:contain">
             <input type="text" id="imgCaption" placeholder="Chú thích (không bắt buộc)" maxlength="200">
@@ -162,7 +155,6 @@
     </div>
 </div>
 
-<!-- FRIEND REQUEST TOAST -->
 <div id="friendReqBox" class="friend-req hidden">
     <div class="fr-text"><span id="frName"></span> muốn kết bạn</div>
     <button class="btn small primary" id="frAccept">Đồng ý</button>
