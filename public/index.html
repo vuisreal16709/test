@@ -8,51 +8,171 @@
 </head>
 <body>
 
-<!-- SCREEN: LOGIN -->
-<div class="screen visible" id="screenLogin">
-    <div class="login-box">
-        <h1>Chat</h1>
-        <p class="sub">Nhập tên và phòng để bắt đầu</p>
-        <input type="text" id="inputName" placeholder="Tên của bạn" maxlength="24" autocomplete="off">
-        <input type="text" id="inputRoom" placeholder="Phòng (mặc định: general)" maxlength="32" autocomplete="off">
-        <button class="btn primary" id="btnJoin">Vào phòng</button>
-        <div class="hint" id="loginHint"></div>
+<!-- SPLASH -->
+<div class="screen visible" id="screenSplash">
+    <div class="splash-box">
+        <div class="logo">💬</div>
+        <div class="spinner"></div>
+        <div class="splash-text">Đang kết nối...</div>
     </div>
 </div>
 
-<!-- SCREEN: CHAT -->
-<div class="screen" id="screenChat">
-    <header id="chatHeader">
-        <button class="icon-btn" id="btnBack">←</button>
+<!-- SETUP (chỉ hiện lần đầu) -->
+<div class="screen" id="screenSetup">
+    <div class="setup-box">
+        <h1>Tạo hồ sơ</h1>
+        <p class="sub">Nhập tên và chọn avatar</p>
+        <div class="avatar-pick" id="avatarPick">
+            <div class="avatar-preview" id="avatarPreview">?</div>
+            <input type="file" id="avatarInput" accept="image/*" style="display:none">
+            <button class="btn small light" id="btnPickAvatar">Chọn ảnh</button>
+        </div>
+        <input type="text" id="setupName" placeholder="Tên hiển thị" maxlength="32" autocomplete="off">
+        <textarea id="setupBio" placeholder="Giới thiệu ngắn..." maxlength="200" rows="2"></textarea>
+        <button class="btn primary" id="btnSetupDone">Bắt đầu chat</button>
+        <div class="hint" id="setupHint"></div>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="screen" id="screenApp">
+    <header id="appHeader">
+        <button class="icon-btn" id="btnTabRooms" title="Phòng">#</button>
         <div class="header-info">
             <div class="room-name" id="roomName">#general</div>
             <div class="online" id="onlineCount">0 online</div>
         </div>
-        <button class="icon-btn" id="btnUsers">👥</button>
+        <button class="icon-btn" id="btnTabFriends" title="Bạn bè">👥</button>
+        <button class="icon-btn" id="btnProfile" title="Hồ sơ">👤</button>
     </header>
 
-    <div id="messages"></div>
+    <!-- ROOMS TAB -->
+    <div class="tab-content visible" id="tabRooms">
+        <div id="messages"></div>
+        <div id="typingBar"></div>
+        <footer id="chatFooter">
+            <button class="icon-btn" id="btnEmoji">😊</button>
+            <button class="icon-btn" id="btnImage">📎</button>
+            <button class="icon-btn" id="btnVoice">🎤</button>
+            <input type="text" id="inputMsg" placeholder="Nhập tin nhắn..." maxlength="5000" autocomplete="off">
+            <button class="icon-btn send" id="btnSend">➤</button>
+        </footer>
+    </div>
 
-    <div id="typingBar"></div>
-
-    <footer id="chatFooter">
-        <input type="text" id="inputMsg" placeholder="Nhập tin nhắn..." maxlength="2000" autocomplete="off">
-        <button class="icon-btn send" id="btnSend">➤</button>
-    </footer>
+    <!-- FRIENDS TAB -->
+    <div class="tab-content" id="tabFriends">
+        <div id="friendsList"></div>
+        <div id="dmView" class="hidden">
+            <div class="dm-head">
+                <button class="icon-btn" id="btnDmBack">←</button>
+                <div class="dm-title" id="dmTitle">Chat riêng</div>
+                <button class="icon-btn" id="btnDmInfo">ℹ</button>
+            </div>
+            <div id="dmMessages"></div>
+            <div id="dmTypingBar"></div>
+            <footer id="dmFooter">
+                <button class="icon-btn" id="btnDmEmoji">😊</button>
+                <button class="icon-btn" id="btnDmImage">📎</button>
+                <button class="icon-btn" id="btnDmVoice">🎤</button>
+                <input type="text" id="dmInput" placeholder="Nhắn riêng..." maxlength="5000" autocomplete="off">
+                <button class="icon-btn send" id="btnDmSend">➤</button>
+            </footer>
+        </div>
+    </div>
 </div>
 
-<!-- DRAWER: USERS -->
+<!-- DRAWER: USERS IN ROOM -->
 <div id="drawer" class="drawer">
     <div class="drawer-head">
-        <span>Thành viên</span>
+        <span>Thành viên phòng</span>
         <button class="icon-btn" id="drawerClose">✕</button>
     </div>
     <div id="userList"></div>
 </div>
-<div id="overlay" class="overlay"></div>
 
-<!-- TOAST -->
+<!-- MODAL: PROFILE -->
+<div id="modalProfile" class="modal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <span id="profileTitle">Hồ sơ</span>
+            <button class="icon-btn" id="profileClose">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="profile-top">
+                <div class="avatar-big" id="profileAvatar">?</div>
+                <div class="profile-main">
+                    <div class="profile-name" id="profileName">-</div>
+                    <div class="profile-uid" id="profileUid">-</div>
+                    <div class="profile-status" id="profileStatus">online</div>
+                </div>
+            </div>
+            <div class="profile-bio" id="profileBio">Chưa có giới thiệu</div>
+            <div class="profile-meta" id="profileMeta"></div>
+            <div class="profile-actions" id="profileActions"></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: EDIT PROFILE -->
+<div id="modalEdit" class="modal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <span>Chỉnh sửa hồ sơ</span>
+            <button class="icon-btn" id="editClose">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="avatar-pick">
+                <div class="avatar-preview" id="editAvatarPreview">?</div>
+                <input type="file" id="editAvatarInput" accept="image/*" style="display:none">
+                <button class="btn small light" id="btnEditAvatar">Đổi ảnh</button>
+            </div>
+            <label class="field-label">Tên</label>
+            <input type="text" id="editName" maxlength="32">
+            <label class="field-label">Giới thiệu</label>
+            <textarea id="editBio" maxlength="200" rows="3"></textarea>
+            <button class="btn primary" id="btnSaveProfile">Lưu</button>
+        </div>
+    </div>
+</div>
+
+<!-- EMOJI PICKER -->
+<div id="emojiPicker" class="emoji-picker">
+    <div class="emoji-grid" id="emojiGrid"></div>
+</div>
+
+<!-- VOICE RECORDER -->
+<div id="voiceRecorder" class="voice-recorder">
+    <div class="vr-box">
+        <div class="vr-timer" id="vrTimer">0:00</div>
+        <div class="vr-hint">Đang ghi âm... Nhấn dừng để gửi</div>
+        <button class="btn danger" id="vrStop">Dừng</button>
+        <button class="btn light" id="vrCancel">Hủy</button>
+    </div>
+</div>
+
+<!-- IMAGE PREVIEW -->
+<div id="imgPreview" class="modal">
+    <div class="modal-box small">
+        <div class="modal-head"><span>Gửi ảnh</span><button class="icon-btn" id="imgClose">✕</button></div>
+        <div class="modal-body">
+            <img id="imgPreviewEl" style="width:100%;border-radius:12px;max-height:50vh;object-fit:contain">
+            <input type="text" id="imgCaption" placeholder="Chú thích (không bắt buộc)" maxlength="200">
+            <button class="btn primary" id="imgSend">Gửi</button>
+        </div>
+    </div>
+</div>
+
+<!-- FRIEND REQUEST TOAST -->
+<div id="friendReqBox" class="friend-req hidden">
+    <div class="fr-text"><span id="frName"></span> muốn kết bạn</div>
+    <button class="btn small primary" id="frAccept">Đồng ý</button>
+    <button class="btn small light" id="frDecline">Từ chối</button>
+</div>
+
+<div id="overlay" class="overlay"></div>
 <div id="toast"></div>
+
+<input type="file" id="imgInputGlobal" accept="image/*" style="display:none">
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="app.js"></script>
