@@ -2,201 +2,59 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Login Demo</title>
-<script src="/socket.io/socket.io.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;color:#eee;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
-.card{background:#16213e;border-radius:16px;padding:24px;width:100%;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
-h1{font-size:22px;text-align:center;margin-bottom:6px}
-.sub{text-align:center;color:#888;font-size:13px;margin-bottom:20px}
-.tabs{display:flex;background:#0f3460;border-radius:10px;padding:4px;margin-bottom:18px}
-.tab{flex:1;padding:10px;text-align:center;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s;color:#aaa}
-.tab.active{background:#e94560;color:#fff}
-input{width:100%;padding:13px;margin:6px 0;background:#0f3460;border:1px solid transparent;border-radius:10px;color:#fff;font-size:15px;font-family:inherit;outline:none;transition:.15s}
-input:focus{border-color:#e94560}
-input::placeholder{color:#667}
-.btn{width:100%;padding:14px;margin-top:14px;background:#e94560;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;transition:.15s}
-.btn:active{transform:scale(.97)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.msg{margin-top:12px;padding:10px;border-radius:8px;text-align:center;font-size:13px;min-height:38px;display:flex;align-items:center;justify-content:center}
-.msg.ok{background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.3)}
-.msg.err{background:rgba(233,69,96,.15);color:#e94560;border:1px solid rgba(233,69,96,.3)}
-.msg:empty{background:transparent;border:none}
-.status{position:fixed;top:12px;right:12px;font-size:11px;padding:4px 10px;border-radius:12px;background:#0f3460;color:#888}
-.status.on{color:#2ecc71}
-.status.off{color:#e74c3c}
-.dashboard{display:none}
-.dashboard.active{display:block}
-.form{display:none}
-.form.active{display:block}
-.user-badge{text-align:center;padding:20px;background:#0f3460;border-radius:12px;margin-bottom:14px}
-.user-badge .label{font-size:12px;color:#888}
-.user-badge .name{font-size:22px;font-weight:700;color:#e94560;margin-top:4px;word-break:break-all}
-.info{font-size:13px;color:#888;line-height:1.7;margin-bottom:16px}
-.info b{color:#eee}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chat Realtime</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="status" id="status">● Đang kết nối...</div>
-
-<div class="card">
-
-  <!-- AUTH VIEW -->
-  <div id="authView">
-    <h1>🔐 Login Demo</h1>
-    <div class="sub">Socket.IO + Node.js</div>
-
-    <div class="tabs">
-      <div class="tab active" data-tab="login">Đăng nhập</div>
-      <div class="tab" data-tab="register">Đăng ký</div>
+<!-- SCREEN: LOGIN -->
+<div class="screen visible" id="screenLogin">
+    <div class="login-box">
+        <h1>Chat</h1>
+        <p class="sub">Nhập tên và phòng để bắt đầu</p>
+        <input type="text" id="inputName" placeholder="Tên của bạn" maxlength="24" autocomplete="off">
+        <input type="text" id="inputRoom" placeholder="Phòng (mặc định: general)" maxlength="32" autocomplete="off">
+        <button class="btn primary" id="btnJoin">Vào phòng</button>
+        <div class="hint" id="loginHint"></div>
     </div>
-
-    <!-- LOGIN FORM -->
-    <div class="form active" id="formLogin">
-      <input type="text"     id="lgUser" placeholder="Tên đăng nhập" autocomplete="off">
-      <input type="password" id="lgPass" placeholder="Mật khẩu">
-      <button class="btn" id="btnLogin" onclick="doLogin()">Đăng nhập</button>
-    </div>
-
-    <!-- REGISTER FORM -->
-    <div class="form" id="formRegister">
-      <input type="text"     id="rgUser" placeholder="Tên đăng nhập" autocomplete="off">
-      <input type="password" id="rgPass" placeholder="Mật khẩu">
-      <input type="password" id="rgPass2" placeholder="Nhập lại mật khẩu">
-      <button class="btn" id="btnRegister" onclick="doRegister()">Tạo tài khoản</button>
-    </div>
-
-    <div class="msg" id="msg"></div>
-  </div>
-
-  <!-- DASHBOARD VIEW -->
-  <div id="dashboard" class="dashboard">
-    <h1>✅ Đã đăng nhập</h1>
-    <div class="user-badge">
-      <div class="label">Xin chào</div>
-      <div class="name" id="dashName">—</div>
-    </div>
-    <div class="info">
-      <b>Socket ID:</b> <span id="dashSid">—</span><br>
-      <b>Trạng thái:</b> <span id="dashConn">—</span><br>
-      <b>Session:</b> lưu trên RAM server, mất khi restart
-    </div>
-    <button class="btn" style="background:#e74c3c" onclick="doLogout()">Đăng xuất</button>
-    <div class="msg" id="msg2"></div>
-  </div>
-
 </div>
 
-<script>
-const socket = io();
-const $ = id => document.getElementById(id);
+<!-- SCREEN: CHAT -->
+<div class="screen" id="screenChat">
+    <header id="chatHeader">
+        <button class="icon-btn" id="btnBack">←</button>
+        <div class="header-info">
+            <div class="room-name" id="roomName">#general</div>
+            <div class="online" id="onlineCount">0 online</div>
+        </div>
+        <button class="icon-btn" id="btnUsers">👥</button>
+    </header>
 
-// ====== CONNECTION STATUS ======
-socket.on('connect', () => {
-  $('status').textContent = '● Đã kết nối';
-  $('status').className = 'status on';
-  $('dashSid').textContent = socket.id;
-  $('dashConn').textContent = 'connected';
-  // hỏi server xem session còn không
-  socket.emit('whoami', (res) => {
-    if (res.user) showDashboard(res.user);
-  });
-});
+    <div id="messages"></div>
 
-socket.on('disconnect', () => {
-  $('status').textContent = '● Mất kết nối';
-  $('status').className = 'status off';
-  $('dashConn').textContent = 'disconnected';
-});
+    <div id="typingBar"></div>
 
-// ====== TABS ======
-document.querySelectorAll('.tab').forEach(t => {
-  t.onclick = () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    const which = t.dataset.tab;
-    $('formLogin').classList.toggle('active',    which === 'login');
-    $('formRegister').classList.toggle('active', which === 'register');
-    setMsg('');
-  };
-});
+    <footer id="chatFooter">
+        <input type="text" id="inputMsg" placeholder="Nhập tin nhắn..." maxlength="2000" autocomplete="off">
+        <button class="icon-btn send" id="btnSend">➤</button>
+    </footer>
+</div>
 
-// ====== HELPERS ======
-function setMsg(text, type = '') {
-  const el = $('authView').style.display === 'none' ? $('msg2') : $('msg');
-  el.textContent = text;
-  el.className = 'msg ' + type;
-  if (text) setTimeout(() => { if (el.textContent === text) setMsg(''); }, 4000);
-}
+<!-- DRAWER: USERS -->
+<div id="drawer" class="drawer">
+    <div class="drawer-head">
+        <span>Thành viên</span>
+        <button class="icon-btn" id="drawerClose">✕</button>
+    </div>
+    <div id="userList"></div>
+</div>
+<div id="overlay" class="overlay"></div>
 
-function busy(btn, on) {
-  btn.disabled = on;
-  btn.textContent = on ? 'Đang xử lý...' : btn.dataset.label;
-}
+<!-- TOAST -->
+<div id="toast"></div>
 
-// ====== ACTIONS ======
-function doLogin() {
-  const user = $('lgUser').value.trim();
-  const pass = $('lgPass').value;
-  if (!user || !pass) return setMsg('Điền đầy đủ thông tin', 'err');
-  const btn = $('btnLogin');
-  btn.dataset.label = 'Đăng nhập';
-  busy(btn, true);
-  socket.emit('login', { user, pass }, (res) => {
-    busy(btn, false);
-    setMsg(res.msg, res.ok ? 'ok' : 'err');
-    if (res.ok) {
-      setTimeout(() => showDashboard(res.user), 500);
-    }
-  });
-}
-
-function doRegister() {
-  const user = $('rgUser').value.trim();
-  const pass = $('rgPass').value;
-  const pass2 = $('rgPass2').value;
-  if (!user || !pass) return setMsg('Điền đầy đủ thông tin', 'err');
-  if (pass !== pass2) return setMsg('Mật khẩu không khớp', 'err');
-  if (user.length < 2) return setMsg('Tên quá ngắn', 'err');
-  const btn = $('btnRegister');
-  btn.dataset.label = 'Tạo tài khoản';
-  busy(btn, true);
-  socket.emit('register', { user, pass }, (res) => {
-    busy(btn, false);
-    setMsg(res.msg, res.ok ? 'ok' : 'err');
-    if (res.ok) {
-      setTimeout(() => {
-        document.querySelector('[data-tab="login"]').click();
-        $('lgUser').value = user;
-        $('lgPass').focus();
-      }, 800);
-    }
-  });
-}
-
-function doLogout() {
-  socket.emit('logout', () => {
-    $('authView').style.display = 'block';
-    $('dashboard').classList.remove('active');
-    $('lgUser').value = '';
-    $('lgPass').value = '';
-    setMsg('Đã đăng xuất', 'ok');
-  });
-}
-
-function showDashboard(user) {
-  $('authView').style.display = 'none';
-  $('dashboard').classList.add('active');
-  $('dashName').textContent = user;
-  $('dashSid').textContent = socket.id;
-}
-
-// Enter để submit nhanh
-$('lgPass').addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
-$('rgPass2').addEventListener('keypress', e => { if (e.key === 'Enter') doRegister(); });
-</script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
