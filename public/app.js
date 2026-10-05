@@ -1,16 +1,15 @@
 (function() {
 'use strict';
 
-// ============ SOCKET ============
 const socket = io();
 
-// ============ DOM HELPERS ============
 function $(id) { return document.getElementById(id); }
 
-// ============ DOM ELEMENTS ============
+// ============ DOM ============
 const screens = {
-    splash: $('screenSplash'),
-    setup: $('screenSetup'),
+    landing: $('screenLanding'),
+    login: $('screenLogin'),
+    register: $('screenRegister'),
     app: $('screenApp')
 };
 
@@ -54,12 +53,25 @@ const state = {
     editAvatar: null
 };
 
+// ============ SESSION (dùng sessionStorage để mỗi tab riêng biệt) ============
+const SESSION_KEY = 'chat_session';
+
+function saveSession(user) {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+}
+function loadSession() {
+    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; }
+}
+function clearSession() {
+    sessionStorage.removeItem(SESSION_KEY);
+}
+
 // ============ SOUND ============
 const Sound = {
     ctx: null,
     init() {
         if (!this.ctx) {
-            try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+            try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
         }
     },
     play(type) {
@@ -92,12 +104,6 @@ const Sound = {
                 gain.gain.setValueAtTime(0.06, t);
                 gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
                 osc.start(t); osc.stop(t + 0.1);
-                break;
-            case 'toggle':
-                osc.frequency.setValueAtTime(700, t);
-                gain.gain.setValueAtTime(0.06, t);
-                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-                osc.start(t); osc.stop(t + 0.05);
                 break;
             case 'friend':
                 osc.frequency.setValueAtTime(523, t);
@@ -132,13 +138,17 @@ function fmtTime(ts) {
     return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
 }
 
+function fmtDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString('vi-VN') + ' ' + d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+}
+
 function escapeHtml(s) {
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
 }
 
-// XSS-enabled: chỉ strip script, on*, javascript:
 function sanitizeXSS(html) {
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
@@ -206,18 +216,117 @@ function readImage(file) {
     });
 }
 
-// ============ LOCAL STORAGE ============
-function loadMe() {
-    try { return JSON.parse(localStorage.getItem('chat_me') || 'null'); } catch (e) { return null; }
+// ============ NAVIGATION ============
+$('btnGoLogin').addEventListener('click', () => { Sound.play('click'); showScreen('login'); });
+$('btnGoRegister').addEventListener('click', () => { Sound.play('click'); showScreen('register'); });
+$('loginBack').addEventListener('click', () => { Sound.play('click'); showScreen('landing'); });
+$('regBack').addEventListener('click', () => { Sound.play('click'); showScreen('landing'); });
+$('linkToRegister').addEventListener('click', () => { Sound.play('click'); showScreen('register'); });
+$('linkToLogin').addEventListener('click', () => { Sound.play('click'); showScreen('login'); });
+
+// ============ REGISTER ============
+let regAvatar = null;
+
+$('btnRegPickAvatar').addEventListener('click', () => $('regAvatarInput').click());
+
+$('regAvatarInput').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+        const dataUrl = await readImage(f);
+        regAvatar = dataUrl;
+        $('regAvatarPreview').innerHTML = '<img src="' + dataUrl + '">';
+        Sound.play('click');
+    } catch (err) {
+        toast('Lỗi ảnh');
+    }
+});
+
+$('btnRegister').addEventListener('click', () => {
+    const username = $('regUsername').value.trim();
+    const password = $('regPassword').value;
+    const name = $('regName').value.trim();
+    const bio = $('regBio').value.trim();
+    const hint = $('regHint');
+
+    hint.className = 'hint';
+    hint.textContent = '';
+
+    if (!username || username.length < 3) { hint.className = 'hint error'; hint.textContent = 'Tên đăng nhập ít nhất 3 ký tự'; return; }
+    if (!password || password.length < 4) { hint.className = 'hint error'; hint.textContent = 'Mật khẩu ít nhất 4 ký tự'; return; }
+    if (!name) { hint.className = 'hint error'; hint.textContent = 'Nhập tên hiển thị'; return; }
+
+    hint.textContent = 'Đang tạo tài khoản...';
+    socket.emit('register', {
+        username, password, name, bio, avatar: regAvatar
+    }, (res) => {
+        if (!res.ok) {
+            hint.className = 'hint error';
+            hint.textContent = res.error;
+            return;
+        }
+        hint.className = 'hint success';
+        hint.textContent = 'Tạo tài khoản thành công! Đang đăng nhập...';
+        Sound.play('friend');
+        // auto login
+        socket.emit('login', { username, password }, (loginRes) => {
+            if (loginRes.ok) {
+                onLoginSuccess(loginRes.user);
+            } else {
+                hint.className = 'hint error';
+                hint.textContent = loginRes.error;
+            }
+        });
+    });
+});
+
+// ============ LOGIN ============
+$('btnLogin').addEventListener('click', doLogin);
+$('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+$('loginUsername').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginPassword').focus(); });
+
+function doLogin() {
+    const username = $('loginUsername').value.trim();
+    const password = $('loginPassword').value;
+    const hint = $('loginHint');
+    hint.className = 'hint';
+    hint.textContent = '';
+
+    if (!username || !password) {
+        hint.className = 'hint error';
+        hint.textContent = 'Nhập đầy đủ thông tin';
+        return;
+    }
+
+    hint.textContent = 'Đang đăng nhập...';
+    socket.emit('login', { username, password }, (res) => {
+        if (!res.ok) {
+            hint.className = 'hint error';
+            hint.textContent = res.error;
+            Sound.play('click');
+            return;
+        }
+        onLoginSuccess(res.user);
+    });
 }
-function saveMe(m) {
-    localStorage.setItem('chat_me', JSON.stringify(m));
+
+function onLoginSuccess(user) {
+    state.me = user;
+    saveSession(user);
+    socket.emit('join', {
+        uid: user.uid,
+        name: user.name,
+        room: 'general',
+        avatar: user.avatar,
+        bio: user.bio
+    });
+    Sound.play('friend');
 }
 
 // ============ INIT ============
 function init() {
     setTimeout(() => {
-        const me = loadMe();
+        const me = loadSession();
         if (me && me.uid && me.name) {
             state.me = me;
             socket.emit('join', {
@@ -228,53 +337,10 @@ function init() {
                 bio: me.bio || ''
             });
         } else {
-            showScreen('setup');
+            showScreen('landing');
         }
-    }, 600);
+    }, 300);
 }
-
-// ============ SETUP ============
-let setupAvatar = null;
-
-$('btnPickAvatar').addEventListener('click', () => $('avatarInput').click());
-
-$('avatarInput').addEventListener('change', async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    try {
-        const dataUrl = await readImage(f);
-        setupAvatar = dataUrl;
-        $('avatarPreview').innerHTML = '<img src="' + dataUrl + '">';
-        Sound.play('click');
-    } catch (err) {
-        toast('Lỗi ảnh');
-    }
-});
-
-$('btnSetupDone').addEventListener('click', () => {
-    const name = $('setupName').value.trim();
-    const bio = $('setupBio').value.trim();
-    if (!name) {
-        $('setupHint').textContent = 'Nhập tên đi bạn';
-        return;
-    }
-    const me = {
-        uid: 'u_' + Math.random().toString(36).slice(2, 10),
-        name: name,
-        avatar: setupAvatar,
-        bio: bio
-    };
-    saveMe(me);
-    state.me = me;
-    $('setupHint').textContent = 'Đang kết nối...';
-    socket.emit('join', {
-        uid: me.uid,
-        name: name,
-        room: 'general',
-        avatar: me.avatar,
-        bio: me.bio
-    });
-});
 
 // ============ SOCKET EVENTS ============
 socket.on('connect', () => console.log('connected', socket.id));
@@ -286,14 +352,14 @@ socket.on('joined', (u) => {
         avatar: u.avatar,
         bio: u.bio,
         color: u.color,
-        room: u.room
+        room: u.room,
+        joinedAt: u.joinedAt
     };
-    saveMe(state.me);
+    saveSession(state.me);
     roomName.textContent = '#' + u.room;
     showScreen('app');
     messages.innerHTML = '';
     dmMessages.innerHTML = '';
-    Sound.play('click');
 });
 
 socket.on('history', (arr) => {
@@ -368,13 +434,8 @@ socket.on('friend request', (fromUser) => {
     }, 15000);
 });
 
-socket.on('friend request sent', () => {
-    toast('Đã gửi lời mời kết bạn');
-});
-
-socket.on('friend error', (msg) => {
-    toast(msg);
-});
+socket.on('friend request sent', () => toast('Đã gửi lời mời kết bạn'));
+socket.on('friend error', (msg) => toast(msg));
 
 socket.on('dm message', (m) => {
     const otherUid = m.fromUid === state.me.uid ? m.toUid : m.fromUid;
@@ -657,10 +718,7 @@ let dmTypingTimer = null;
 
 function sendDm(text) {
     if (!state.activeDmUid || !text.trim()) return;
-    socket.emit('dm', {
-        toUid: state.activeDmUid,
-        text: text
-    });
+    socket.emit('dm', { toUid: state.activeDmUid, text: text });
     Sound.play('send');
     if (dmTypingSent) {
         socket.emit('dm typing', { toUid: state.activeDmUid, typing: false });
@@ -696,7 +754,7 @@ dmInput.addEventListener('input', () => {
     }, 1500);
 });
 
-// ============ HEADER BUTTONS ============
+// ============ HEADER ============
 $('btnTabRooms').addEventListener('click', () => {
     Sound.play('click');
     state.activeTab = 'rooms';
@@ -751,37 +809,45 @@ function openProfile(uid, isSelf) {
             avatar: state.me.avatar,
             bio: state.me.bio,
             color: state.me.color,
-            room: state.me.room
+            room: state.me.room,
+            joinedAt: state.me.joinedAt
         };
     } else {
         target = state.users.find(x => x.uid === uid);
-        if (!target) {
-            toast('Người dùng không online');
-            return;
-        }
+        if (!target) { toast('Người dùng không online'); return; }
     }
 
     $('profileTitle').textContent = me ? 'Hồ sơ của bạn' : 'Hồ sơ';
     $('profileName').textContent = target.name;
     $('profileUid').textContent = 'UID: ' + target.uid;
-    $('profileBio').textContent = target.bio || 'Chưa có giới thiệu';
-    $('profileStatus').textContent = me ? 'online (bạn)' : 'online';
 
     const av = $('profileAvatar');
+    av.innerHTML = '';
+    av.style.background = '';
+    av.style.color = '';
     if (target.avatar) {
         av.innerHTML = '<img src="' + target.avatar + '">';
-        av.style.background = '';
-        av.style.color = '';
     } else {
-        av.innerHTML = '';
         av.style.background = target.color || '#71717a';
         av.style.color = '#fff';
         av.textContent = (target.name || '?').charAt(0).toUpperCase();
     }
 
-    $('profileMeta').innerHTML =
-        '<div>Phòng: #' + (target.room || state.me.room) + '</div>' +
-        '<div>UID dùng để kết bạn</div>';
+    // status
+    const statusEl = $('profileStatus');
+    statusEl.textContent = me ? 'online (bạn)' : 'online';
+    statusEl.className = 'profile-status';
+
+    // info
+    const isFriend = state.myFriends.indexOf(target.uid) !== -1;
+    const infoEl = $('profileInfo');
+    infoEl.innerHTML =
+        '<div class="info-row"><span class="label">Phòng hiện tại</span><span class="value">#' + (target.room || state.me.room) + '</span></div>' +
+        '<div class="info-row"><span class="label">Trạng thái</span><span class="value">' + (me ? 'Trực tuyến (bạn)' : 'Trực tuyến') + '</span></div>' +
+        '<div class="info-row"><span class="label">Quan hệ</span><span class="value">' + (me ? 'Chính bạn' : (isFriend ? 'Bạn bè' : 'Người lạ')) + '</span></div>' +
+        (target.joinedAt ? '<div class="info-row"><span class="label">Tham gia</span><span class="value">' + fmtDate(target.joinedAt) + '</span></div>' : '');
+
+    $('profileBio').textContent = target.bio || 'Chưa có giới thiệu';
 
     const actions = $('profileActions');
     actions.innerHTML = '';
@@ -795,6 +861,7 @@ function openProfile(uid, isSelf) {
             $('editName').value = state.me.name;
             $('editBio').value = state.me.bio || '';
             const eav = $('editAvatarPreview');
+            eav.innerHTML = '';
             if (state.me.avatar) eav.innerHTML = '<img src="' + state.me.avatar + '">';
             else eav.textContent = (state.me.name || '?').charAt(0).toUpperCase();
             $('modalProfile').classList.remove('visible');
@@ -802,7 +869,6 @@ function openProfile(uid, isSelf) {
         });
         actions.appendChild(editBtn);
     } else {
-        const isFriend = state.myFriends.indexOf(target.uid) !== -1;
         if (isFriend) {
             const dmBtn = document.createElement('button');
             dmBtn.className = 'btn primary';
@@ -848,25 +914,20 @@ $('editAvatarInput').addEventListener('change', async (e) => {
         state.editAvatar = dataUrl;
         $('editAvatarPreview').innerHTML = '<img src="' + dataUrl + '">';
         Sound.play('click');
-    } catch (err) {
-        toast('Lỗi ảnh');
-    }
+    } catch (err) { toast('Lỗi ảnh'); }
 });
 
 $('btnSaveProfile').addEventListener('click', () => {
     const name = $('editName').value.trim();
     const bio = $('editBio').value.trim();
-    if (!name) {
-        toast('Tên không được trống');
-        return;
-    }
+    if (!name) { toast('Tên không được trống'); return; }
     const payload = { name: name, bio: bio };
     if (state.editAvatar) payload.avatar = state.editAvatar;
     socket.emit('update profile', payload);
     state.me.name = name;
     state.me.bio = bio;
     if (state.editAvatar) state.me.avatar = state.editAvatar;
-    saveMe(state.me);
+    saveSession(state.me);
     state.editAvatar = null;
     $('modalEdit').classList.remove('visible');
     toast('Đã lưu hồ sơ');
@@ -876,6 +937,26 @@ $('btnSaveProfile').addEventListener('click', () => {
 $('editClose').addEventListener('click', () => {
     Sound.play('click');
     $('modalEdit').classList.remove('visible');
+});
+
+// ============ LOGOUT ============
+$('btnLogout').addEventListener('click', () => {
+    Sound.play('click');
+    if (!confirm('Đăng xuất khỏi tài khoản?')) return;
+    socket.emit('logout');
+    clearSession();
+    state.me = null;
+    state.myFriends = [];
+    state.users = [];
+    state.activeDmUid = null;
+    messages.innerHTML = '';
+    dmMessages.innerHTML = '';
+    $('loginUsername').value = '';
+    $('loginPassword').value = '';
+    $('loginHint').textContent = '';
+    $('modalEdit').classList.remove('visible');
+    showScreen('landing');
+    toast('Đã đăng xuất');
 });
 
 // ============ EMOJI ============
@@ -937,9 +1018,7 @@ $('imgInputGlobal').addEventListener('change', async (e) => {
         $('imgPreviewEl').src = dataUrl;
         $('imgCaption').value = '';
         $('imgPreview').classList.add('visible');
-    } catch (err) {
-        toast('Lỗi ảnh');
-    }
+    } catch (err) { toast('Lỗi ảnh'); }
     e.target.value = '';
 });
 
@@ -953,12 +1032,7 @@ $('imgSend').addEventListener('click', () => {
     if (!state.pendingImage) return;
     const cap = $('imgCaption').value.trim();
     if (state.imgTarget === 'dm' && state.activeDmUid) {
-        socket.emit('dm', {
-            toUid: state.activeDmUid,
-            kind: 'image',
-            dataUrl: state.pendingImage,
-            caption: cap
-        });
+        socket.emit('dm', { toUid: state.activeDmUid, kind: 'image', dataUrl: state.pendingImage, caption: cap });
     } else {
         socket.emit('image', { dataUrl: state.pendingImage, caption: cap });
     }
@@ -973,10 +1047,8 @@ let mediaStream = null;
 async function startRecording(target) {
     try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (e) {
-        toast('Không truy cập được mic');
-        return;
-    }
+    } catch (e) { toast('Không truy cập được mic'); return; }
+
     state.recordingTarget = target;
     state.audioChunks = [];
     let mime = 'audio/webm';
@@ -986,10 +1058,8 @@ async function startRecording(target) {
         state.mediaRecorder = mime
             ? new MediaRecorder(mediaStream, { mimeType: mime })
             : new MediaRecorder(mediaStream);
-    } catch (e) {
-        toast('Không ghi âm được');
-        return;
-    }
+    } catch (e) { toast('Không ghi âm được'); return; }
+
     state.mediaRecorder.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) state.audioChunks.push(ev.data);
     };
@@ -1000,12 +1070,7 @@ async function startRecording(target) {
             const dataUrl = reader.result;
             const duration = (Date.now() - state.recordingStart) / 1000;
             if (state.recordingTarget === 'dm' && state.activeDmUid) {
-                socket.emit('dm', {
-                    toUid: state.activeDmUid,
-                    kind: 'voice',
-                    dataUrl: dataUrl,
-                    duration: duration
-                });
+                socket.emit('dm', { toUid: state.activeDmUid, kind: 'voice', dataUrl: dataUrl, duration: duration });
             } else {
                 socket.emit('voice', { dataUrl: dataUrl, duration: duration });
             }

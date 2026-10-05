@@ -20,6 +20,7 @@ const usersByUid = new Map();
 const rooms = new Map();
 const history = new Map();
 const dms = new Map();
+const accounts = new Map(); // username -> { username, password, uid, name, avatar, bio, color }
 
 const COLORS = ['#e11d48','#db2777','#c026d3','#9333ea','#7c3aed','#4f46e5','#2563eb','#0284c7','#0891b2','#0d9488','#059669','#16a34a','#ca8a04','#ea580c','#dc2626'];
 
@@ -41,7 +42,8 @@ function userPublic(u) {
         avatar: u.avatar || null,
         color: u.color,
         bio: u.bio || '',
-        room: u.room
+        room: u.room,
+        joinedAt: u.joinedAt
     };
 }
 
@@ -63,6 +65,56 @@ function broadcastAll() {
 io.on('connection', (socket) => {
     console.log('[+]', socket.id);
 
+    // ============ REGISTER ============
+    socket.on('register', (data, cb) => {
+        const username = String(data?.username || '').trim().toLowerCase();
+        const password = String(data?.password || '');
+        const name = String(data?.name || '').trim().slice(0, 32);
+        const bio = String(data?.bio || '').trim().slice(0, 200);
+        const avatar = data?.avatar || null;
+
+        if (!username || username.length < 3) return cb && cb({ ok: false, error: 'Tên đăng nhập ít nhất 3 ký tự' });
+        if (!password || password.length < 4) return cb && cb({ ok: false, error: 'Mật khẩu ít nhất 4 ký tự' });
+        if (!name) return cb && cb({ ok: false, error: 'Nhập tên hiển thị' });
+        if (accounts.has(username)) return cb && cb({ ok: false, error: 'Tên đăng nhập đã tồn tại' });
+
+        const account = {
+            username,
+            password,
+            uid: genUid(),
+            name,
+            avatar,
+            bio,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)]
+        };
+        accounts.set(username, account);
+        console.log('[register]', username);
+        cb && cb({ ok: true });
+    });
+
+    // ============ LOGIN ============
+    socket.on('login', (data, cb) => {
+        const username = String(data?.username || '').trim().toLowerCase();
+        const password = String(data?.password || '');
+        const account = accounts.get(username);
+
+        if (!account) return cb && cb({ ok: false, error: 'Tài khoản không tồn tại' });
+        if (account.password !== password) return cb && cb({ ok: false, error: 'Sai mật khẩu' });
+
+        cb && cb({
+            ok: true,
+            user: {
+                uid: account.uid,
+                name: account.name,
+                avatar: account.avatar,
+                bio: account.bio,
+                color: account.color,
+                username: account.username
+            }
+        });
+    });
+
+    // ============ JOIN ============
     socket.on('join', (data) => {
         const name = String(data?.name || '').trim().slice(0, 32) || 'Ẩn danh';
         const room = String(data?.room || '').trim().slice(0, 32) || 'general';
@@ -95,7 +147,6 @@ io.on('connection', (socket) => {
         }
         users.set(socket.id, user);
 
-        // rời phòng cũ
         for (const [r, set] of rooms.entries()) {
             if (r !== room && set.has(socket.id)) {
                 set.delete(socket.id);
@@ -109,15 +160,9 @@ io.on('connection', (socket) => {
 
         socket.emit('joined', { ...userPublic(user), socketId: socket.id });
         socket.emit('history', history.get(room) || []);
-
-        socket.to(room).emit('system', {
-            text: `${name} đã vào phòng`,
-            time: Date.now()
-        });
-
+        socket.to(room).emit('system', { text: name + ' đã vào phòng', time: Date.now() });
         broadcastUserList(room);
         broadcastAll();
-        console.log(`[join] ${name} -> #${room}`);
     });
 
     socket.on('message', (payload) => {
@@ -127,14 +172,8 @@ io.on('connection', (socket) => {
         if (!text.trim()) return;
         const msg = {
             id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-            kind: 'text',
-            userId: socket.id,
-            uid: u.uid,
-            name: u.name,
-            avatar: u.avatar,
-            color: u.color,
-            text,
-            time: Date.now()
+            kind: 'text', userId: socket.id, uid: u.uid, name: u.name,
+            avatar: u.avatar, color: u.color, text, time: Date.now()
         };
         addHistory(history, u.room, msg);
         io.to(u.room).emit('message', msg);
@@ -147,16 +186,9 @@ io.on('connection', (socket) => {
         if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return;
         if (dataUrl.length > 8e6) return;
         const msg = {
-            id: 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-            kind: 'image',
-            userId: socket.id,
-            uid: u.uid,
-            name: u.name,
-            avatar: u.avatar,
-            color: u.color,
-            dataUrl,
-            text: String(payload?.caption || '').slice(0, 500),
-            time: Date.now()
+            id: 'i_' + Date.now(), kind: 'image', userId: socket.id, uid: u.uid,
+            name: u.name, avatar: u.avatar, color: u.color,
+            dataUrl, text: String(payload?.caption || '').slice(0, 500), time: Date.now()
         };
         addHistory(history, u.room, msg);
         io.to(u.room).emit('message', msg);
@@ -169,16 +201,9 @@ io.on('connection', (socket) => {
         if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:audio/')) return;
         if (dataUrl.length > 8e6) return;
         const msg = {
-            id: 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-            kind: 'voice',
-            userId: socket.id,
-            uid: u.uid,
-            name: u.name,
-            avatar: u.avatar,
-            color: u.color,
-            dataUrl,
-            duration: Number(payload?.duration) || 0,
-            time: Date.now()
+            id: 'v_' + Date.now(), kind: 'voice', userId: socket.id, uid: u.uid,
+            name: u.name, avatar: u.avatar, color: u.color,
+            dataUrl, duration: Number(payload?.duration) || 0, time: Date.now()
         };
         addHistory(history, u.room, msg);
         io.to(u.room).emit('message', msg);
@@ -187,11 +212,7 @@ io.on('connection', (socket) => {
     socket.on('typing', (isTyping) => {
         const u = users.get(socket.id);
         if (!u) return;
-        socket.to(u.room).emit('typing', {
-            userId: socket.id,
-            name: u.name,
-            typing: !!isTyping
-        });
+        socket.to(u.room).emit('typing', { userId: socket.id, name: u.name, typing: !!isTyping });
     });
 
     socket.on('update profile', (payload) => {
@@ -204,11 +225,6 @@ io.on('connection', (socket) => {
         io.to(u.room).emit('profile updated', pub);
         io.emit('user updated', pub);
         broadcastUserList(u.room);
-    });
-
-    socket.on('get profile', (uid, cb) => {
-        const u = usersByUid.get(uid);
-        if (typeof cb === 'function') cb(userPublic(u));
     });
 
     socket.on('friend request', (payload) => {
@@ -243,10 +259,7 @@ io.on('connection', (socket) => {
                 break;
             }
         }
-        io.to(me.room).emit('system', {
-            text: `${me.name} và ${other.name} đã kết bạn`,
-            time: Date.now()
-        });
+        io.to(me.room).emit('system', { text: me.name + ' và ' + other.name + ' đã kết bạn', time: Date.now() });
     });
 
     socket.on('friend decline', (payload) => {
@@ -254,10 +267,7 @@ io.on('connection', (socket) => {
         if (!me) return;
         for (const [sid, u] of users.entries()) {
             if (u.uid === payload?.fromUid) {
-                io.to(sid).emit('system', {
-                    text: `${me.name} đã từ chối kết bạn`,
-                    time: Date.now()
-                });
+                io.to(sid).emit('system', { text: me.name + ' đã từ chối kết bạn', time: Date.now() });
                 break;
             }
         }
@@ -272,54 +282,19 @@ io.on('connection', (socket) => {
         let msg;
         if (payload.kind === 'image' && typeof payload.dataUrl === 'string' && payload.dataUrl.startsWith('data:image/')) {
             if (payload.dataUrl.length > 8e6) return;
-            msg = {
-                id: 'dm_i_' + Date.now(),
-                kind: 'image',
-                dataUrl: payload.dataUrl,
-                text: String(payload.caption || '').slice(0, 500),
-                fromUid: me.uid,
-                toUid,
-                name: me.name,
-                avatar: me.avatar,
-                color: me.color,
-                time: Date.now()
-            };
+            msg = { id: 'dm_i_' + Date.now(), kind: 'image', dataUrl: payload.dataUrl, text: String(payload.caption || '').slice(0, 500), fromUid: me.uid, toUid, name: me.name, avatar: me.avatar, color: me.color, time: Date.now() };
         } else if (payload.kind === 'voice' && typeof payload.dataUrl === 'string' && payload.dataUrl.startsWith('data:audio/')) {
             if (payload.dataUrl.length > 8e6) return;
-            msg = {
-                id: 'dm_v_' + Date.now(),
-                kind: 'voice',
-                dataUrl: payload.dataUrl,
-                duration: Number(payload.duration) || 0,
-                fromUid: me.uid,
-                toUid,
-                name: me.name,
-                avatar: me.avatar,
-                color: me.color,
-                time: Date.now()
-            };
+            msg = { id: 'dm_v_' + Date.now(), kind: 'voice', dataUrl: payload.dataUrl, duration: Number(payload.duration) || 0, fromUid: me.uid, toUid, name: me.name, avatar: me.avatar, color: me.color, time: Date.now() };
         } else {
             const t = String(payload.text || '').slice(0, 5000);
             if (!t.trim()) return;
-            msg = {
-                id: 'dm_' + Date.now(),
-                kind: 'text',
-                text: t,
-                fromUid: me.uid,
-                toUid,
-                name: me.name,
-                avatar: me.avatar,
-                color: me.color,
-                time: Date.now()
-            };
+            msg = { id: 'dm_' + Date.now(), kind: 'text', text: t, fromUid: me.uid, toUid, name: me.name, avatar: me.avatar, color: me.color, time: Date.now() };
         }
         addHistory(dms, key, msg);
         socket.emit('dm message', msg);
         for (const [sid, u] of users.entries()) {
-            if (u.uid === toUid) {
-                io.to(sid).emit('dm message', msg);
-                break;
-            }
+            if (u.uid === toUid) { io.to(sid).emit('dm message', msg); break; }
         }
     });
 
@@ -336,13 +311,27 @@ io.on('connection', (socket) => {
         if (!me) return;
         for (const [sid, u] of users.entries()) {
             if (u.uid === payload?.toUid) {
-                io.to(sid).emit('dm typing', {
-                    fromUid: me.uid,
-                    name: me.name,
-                    typing: !!payload.typing
-                });
+                io.to(sid).emit('dm typing', { fromUid: me.uid, name: me.name, typing: !!payload.typing });
                 break;
             }
+        }
+    });
+
+    socket.on('logout', () => {
+        const u = users.get(socket.id);
+        if (u) {
+            const set = rooms.get(u.room);
+            if (set) {
+                set.delete(socket.id);
+                if (set.size === 0) rooms.delete(u.room);
+                else {
+                    socket.to(u.room).emit('system', { text: u.name + ' đã rời phòng', time: Date.now() });
+                    broadcastUserList(u.room);
+                }
+            }
+            users.delete(socket.id);
+            u.online = false;
+            broadcastAll();
         }
     });
 
@@ -354,10 +343,7 @@ io.on('connection', (socket) => {
                 set.delete(socket.id);
                 if (set.size === 0) rooms.delete(u.room);
                 else {
-                    socket.to(u.room).emit('system', {
-                        text: `${u.name} đã rời phòng`,
-                        time: Date.now()
-                    });
+                    socket.to(u.room).emit('system', { text: u.name + ' đã rời phòng', time: Date.now() });
                     broadcastUserList(u.room);
                 }
             }
@@ -365,7 +351,6 @@ io.on('connection', (socket) => {
             u.online = false;
             broadcastAll();
         }
-        console.log('[-]', socket.id);
     });
 });
 
@@ -373,15 +358,13 @@ app.get('/stats', (req, res) => {
     res.json({
         online: users.size,
         uniqueUsers: usersByUid.size,
-        rooms: [...rooms.entries()].map(([name, set]) => ({
-            name,
-            count: set.size
-        })),
+        accounts: accounts.size,
+        rooms: [...rooms.entries()].map(([name, set]) => ({ name, count: set.size })),
         dms: dms.size
     });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n  Chat server v2 on port ${PORT}`);
-    console.log(`  Local: http://localhost:${PORT}\n`);
+    console.log('\n  Chat server v2.1 on port ' + PORT);
+    console.log('  Local: http://localhost:' + PORT + '\n');
 });

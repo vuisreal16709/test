@@ -8,30 +8,99 @@
 </head>
 <body>
 
-<div class="screen visible" id="screenSplash">
-    <div class="splash-box">
-        <div class="logo">💬</div>
-        <div class="spinner"></div>
-        <div class="splash-text">Đang kết nối...</div>
-    </div>
-</div>
-
-<div class="screen" id="screenSetup">
-    <div class="setup-box">
-        <h1>Tạo hồ sơ</h1>
-        <p class="sub">Nhập tên và chọn avatar</p>
-        <div class="avatar-pick">
-            <div class="avatar-preview" id="avatarPreview">?</div>
-            <input type="file" id="avatarInput" accept="image/*" style="display:none">
-            <button class="btn small light" id="btnPickAvatar">Chọn ảnh</button>
+<!-- ============ LANDING ============ -->
+<div class="screen visible" id="screenLanding">
+    <div class="landing">
+        <div class="landing-hero">
+            <div class="landing-logo">💬</div>
+            <h1>Chat Realtime</h1>
+            <p class="landing-tagline">Kết nối bạn bè · Trò chuyện tức thì · Chia sẻ mọi lúc</p>
         </div>
-        <input type="text" id="setupName" placeholder="Tên hiển thị" maxlength="32" autocomplete="off">
-        <textarea id="setupBio" placeholder="Giới thiệu ngắn..." maxlength="200" rows="2"></textarea>
-        <button class="btn primary" id="btnSetupDone">Bắt đầu chat</button>
-        <div class="hint" id="setupHint"></div>
+
+        <div class="landing-features">
+            <div class="feat">
+                <div class="feat-icon">⚡</div>
+                <div class="feat-body">
+                    <div class="feat-title">Realtime</div>
+                    <div class="feat-desc">Tin nhắn đến tức thì qua WebSocket</div>
+                </div>
+            </div>
+            <div class="feat">
+                <div class="feat-icon">🎤</div>
+                <div class="feat-body">
+                    <div class="feat-title">Voice & Ảnh</div>
+                    <div class="feat-desc">Gửi tin nhắn thoại, ảnh trực tiếp</div>
+                </div>
+            </div>
+            <div class="feat">
+                <div class="feat-icon">👥</div>
+                <div class="feat-body">
+                    <div class="feat-title">Bạn bè & DM</div>
+                    <div class="feat-desc">Kết bạn, chat riêng tư</div>
+                </div>
+            </div>
+            <div class="feat">
+                <div class="feat-icon">🎨</div>
+                <div class="feat-body">
+                    <div class="feat-title">XSS Enabled</div>
+                    <div class="feat-desc">Render HTML trong tin nhắn</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="landing-owner">
+            <div class="owner-head">Thông tin chủ sở hữu</div>
+            <div class="owner-row"><span>Phát triển bởi</span><b>vuisreal16709</b></div>
+            <div class="owner-row"><span>GitHub</span><a href="https://github.com/vuisreal16709" target="_blank">github.com/vuisreal16709</a></div>
+            <div class="owner-row"><span>Stack</span><b>Node.js · Socket.IO · Render</b></div>
+            <div class="owner-row"><span>Phiên bản</span><b>v2.1.0</b></div>
+        </div>
+
+        <div class="landing-actions">
+            <button class="btn primary" id="btnGoLogin">Đăng nhập</button>
+            <button class="btn light" id="btnGoRegister">Đăng ký</button>
+        </div>
+
+        <div class="landing-footer">© 2025 Chat Realtime. Made with ❤️</div>
     </div>
 </div>
 
+<!-- ============ LOGIN ============ -->
+<div class="screen" id="screenLogin">
+    <div class="auth-box">
+        <button class="icon-btn back-btn" id="loginBack">←</button>
+        <h1>Đăng nhập</h1>
+        <p class="sub">Chào mừng trở lại</p>
+        <input type="text" id="loginUsername" placeholder="Tên đăng nhập" maxlength="32" autocomplete="username">
+        <input type="password" id="loginPassword" placeholder="Mật khẩu" maxlength="64" autocomplete="current-password">
+        <button class="btn primary" id="btnLogin">Đăng nhập</button>
+        <div class="hint" id="loginHint"></div>
+        <div class="auth-switch">Chưa có tài khoản? <a id="linkToRegister">Đăng ký</a></div>
+    </div>
+</div>
+
+<!-- ============ REGISTER ============ -->
+<div class="screen" id="screenRegister">
+    <div class="auth-box">
+        <button class="icon-btn back-btn" id="regBack">←</button>
+        <h1>Đăng ký</h1>
+        <p class="sub">Tạo tài khoản mới</p>
+        <div class="avatar-pick">
+            <div class="avatar-preview" id="regAvatarPreview">?</div>
+            <input type="file" id="regAvatarInput" accept="image/*" style="display:none">
+            <button class="btn small light" id="btnRegPickAvatar">Chọn ảnh</button>
+        </div>
+        <input type="text" id="regUsername" placeholder="Tên đăng nhập (≥3 ký tự)" maxlength="32" autocomplete="off">
+        <input type="password" id="regPassword" placeholder="Mật khẩu (≥4 ký tự)" maxlength="64" autocomplete="new-password">
+        <input type="text" id="regName" placeholder="Tên hiển thị" maxlength="32" autocomplete="off">
+        <textarea id="regBio" placeholder="Giới thiệu ngắn..." maxlength="200" rows="2"></textarea>
+        <button class="btn primary" id="btnRegister">Tạo tài khoản</button>
+        <div class="hint" id="regHint"></div>
+        <div class="auth-switch">Đã có tài khoản? <a id="linkToLogin">Đăng nhập</a></div>
+    </div>
+</div>
+
+<!-- ============ APP ============ -->
 <div class="screen" id="screenApp">
     <header id="appHeader">
         <button class="icon-btn" id="btnTabRooms">#</button>
@@ -77,6 +146,7 @@
     </div>
 </div>
 
+<!-- DRAWER -->
 <div id="drawer" class="drawer">
     <div class="drawer-head">
         <span>Thành viên phòng</span>
@@ -85,6 +155,7 @@
     <div id="userList"></div>
 </div>
 
+<!-- PROFILE MODAL -->
 <div id="modalProfile" class="modal">
     <div class="modal-box">
         <div class="modal-head">
@@ -92,21 +163,20 @@
             <button class="icon-btn" id="profileClose">✕</button>
         </div>
         <div class="modal-body">
-            <div class="profile-top">
+            <div class="profile-avatar-wrap">
                 <div class="avatar-big" id="profileAvatar">?</div>
-                <div class="profile-main">
-                    <div class="profile-name" id="profileName">-</div>
-                    <div class="profile-uid" id="profileUid">-</div>
-                    <div class="profile-status" id="profileStatus">online</div>
-                </div>
             </div>
+            <div class="profile-name" id="profileName">-</div>
+            <div class="profile-uid" id="profileUid">-</div>
+            <div class="profile-status" id="profileStatus">online</div>
+            <div class="profile-info" id="profileInfo"></div>
             <div class="profile-bio" id="profileBio">Chưa có giới thiệu</div>
-            <div class="profile-meta" id="profileMeta"></div>
             <div class="profile-actions" id="profileActions"></div>
         </div>
     </div>
 </div>
 
+<!-- EDIT MODAL -->
 <div id="modalEdit" class="modal">
     <div class="modal-box">
         <div class="modal-head">
@@ -124,14 +194,17 @@
             <label class="field-label">Giới thiệu</label>
             <textarea id="editBio" maxlength="200" rows="3"></textarea>
             <button class="btn primary" id="btnSaveProfile">Lưu</button>
+            <button class="btn light" id="btnLogout">Đăng xuất</button>
         </div>
     </div>
 </div>
 
+<!-- EMOJI -->
 <div id="emojiPicker" class="emoji-picker">
     <div class="emoji-grid" id="emojiGrid"></div>
 </div>
 
+<!-- VOICE RECORDER -->
 <div id="voiceRecorder" class="voice-recorder">
     <div class="vr-box">
         <div class="vr-timer" id="vrTimer">0:00</div>
@@ -141,6 +214,7 @@
     </div>
 </div>
 
+<!-- IMAGE PREVIEW -->
 <div id="imgPreview" class="modal">
     <div class="modal-box small">
         <div class="modal-head">
